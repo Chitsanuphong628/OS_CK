@@ -1,6 +1,7 @@
 # Makefile — คนที่ 5 (Docker+Integration) ดูแล
-# โครงสร้างไฟล์แบบ flat: protocol.h / server.cpp / client.cpp อยู่ root ทั้งหมด
-# (ชื่อจริงใน repo คือ protocol.h ไม่ใช่ common.h ตามที่คุยกันตอนแรก — เช็คจาก origin/main แล้ว)
+# โครงสร้างไฟล์แบบ flat อยู่ root ทั้งหมด
+# ตอนนี้ server.cpp include "common.h" และ client.cpp include "protocol.h" แยกคนละไฟล์กัน
+# (ยังไม่ได้รวมเป็น header เดียว — ทีมต้องตกลงกันก่อน ดู README/พูดคุยในกลุ่ม)
 # แก้ CXXFLAGS ตรงนี้ถ้าใครต้องการ debug flag เพิ่ม (เช่น -g -fsanitize=thread เช็ค race condition)
 
 CXX      := g++
@@ -13,7 +14,7 @@ CLIENT_BIN := client_bin
 
 all: $(SERVER_BIN) $(CLIENT_BIN)
 
-$(SERVER_BIN): server.cpp protocol.h
+$(SERVER_BIN): server.cpp common.h
 	$(CXX) $(CXXFLAGS) -o $@ server.cpp
 
 $(CLIENT_BIN): client.cpp protocol.h

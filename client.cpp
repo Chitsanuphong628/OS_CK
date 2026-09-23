@@ -1,60 +1,40 @@
+#include "protocol.h"
+
 #include <cstdio>
-#include <cstdlib>
 #include <iostream>
 #include <sstream>
 #include <string>
 
-#include <sys/ipc.h>
 #include <sys/msg.h>
 
 using namespace std;
 
-const key_t REQUEST_QUEUE_KEY = 0x2231;
-const key_t REPLY_QUEUE_KEY = 0x2232;
-const int RESOURCE_COUNT = 20;
+bool parse_client_id(const string& text, int& client_id) {
+    istringstream input(text);
+    string extra;
 
-const int CMD_LIST = 1;
-const int CMD_STATUS = 2;
-const int CMD_RESERVE = 3;
-const int CMD_CANCEL = 4;
-const int CMD_QUIT = 5;
-
-struct RequestMessage {
-    long mtype;
-    int client_id;
-    int request_id;
-    int command;
-    int resource_id;
-};
-
-struct ResponseMessage {
-    long mtype;
-    int request_id;
-    int success;
-    char text[256];
-};
+    if (!(input >> client_id) || (input >> extra) || client_id <= 0) {
+        return false;
+    }
+    return true;
+}
 
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        cout << "Usage: " << argv[0] << " <client_id>\n";
+    int client_id = 0;
+    if (argc != 2 || !parse_client_id(argv[1], client_id)) {
+        cout << "Usage: " << argv[0] << " <positive_client_id>\n";
         return 1;
     }
 
-    int client_id = atoi(argv[1]);
-    if (client_id <= 0) {
-        cout << "client_id must be a positive number.\n";
-        return 1;
-    }
-
-    int request_queue = msgget(REQUEST_QUEUE_KEY, 0666);
-    int reply_queue = msgget(REPLY_QUEUE_KEY, 0666);
+    int request_queue = msgget(REQUEST_QUEUE_KEY, 0660);
+    int reply_queue = msgget(REPLY_QUEUE_KEY, 0660);
 
     if (request_queue == -1 || reply_queue == -1) {
         perror("msgget: start the server first");
         return 1;
     }
 
-    int request_id = 1;
+    unsigned int request_id = 1;
     string line;
 
     while (true) {
@@ -63,7 +43,7 @@ int main(int argc, char* argv[]) {
             break;
         }
 
-        stringstream input(line);
+        istringstream input(line);
         string command_text;
         if (!(input >> command_text)) {
             continue;
@@ -83,44 +63,56 @@ int main(int argc, char* argv[]) {
         } else if (command_text == "QUIT") {
             command = CMD_QUIT;
         } else {
-            cout << "Unknown command.\n";
+            cout << "Unknown command. Use LIST, STATUS, RESERVE, CANCEL, or QUIT.\n";
             continue;
         }
 
+        string extra;
         if (command == CMD_STATUS || command == CMD_RESERVE ||
             command == CMD_CANCEL) {
-            string extra;
             if (!(input >> resource_id) || (input >> extra) ||
                 resource_id < 1 || resource_id > RESOURCE_COUNT) {
-                cout << "Enter one resource_id from 1 to "
+                cout << "Enter exactly one resource ID from 1 to "
                      << RESOURCE_COUNT << ".\n";
                 continue;
             }
+        } else if (input >> extra) {
+            cout << command_text << " does not take an argument.\n";
+            continue;
         }
 
         RequestMessage request{};
-        request.mtype = 1;
+        request.mtype = REQUEST_MESSAGE_TYPE;
         request.client_id = client_id;
         request.request_id = request_id;
         request.command = command;
         request.resource_id = resource_id;
 
-        if (msgsnd(request_queue, &request,
-                   sizeof(request) - sizeof(request.mtype), 0) == -1) {
+        const size_t request_size = sizeof(request) - sizeof(request.mtype);
+        if (msgsnd(request_queue, &request, request_size, 0) == -1) {
             perror("msgsnd");
             return 1;
         }
 
         ResponseMessage response{};
-        ssize_t received = msgrcv(reply_queue, &response,
-                                  sizeof(response) - sizeof(response.mtype),
-                                  client_id, 0);
+        const size_t response_size = sizeof(response) - sizeof(response.mtype);
+        const ssize_t received = msgrcv(reply_queue, &response, response_size,
+                                        client_id, 0);
         if (received == -1) {
             perror("msgrcv");
             return 1;
         }
+        if (received != static_cast<ssize_t>(response_size)) {
+            cout << "Response size does not match protocol.h.\n";
+            return 1;
+        }
 
         response.text[sizeof(response.text) - 1] = '\0';
+        if (response.request_id != request_id) {
+            cout << "Response request ID does not match the request.\n";
+            return 1;
+        }
+
         cout << (response.success ? "SUCCESS: " : "FAILED: ")
              << response.text << '\n';
 
@@ -129,6 +121,9 @@ int main(int argc, char* argv[]) {
         }
 
         request_id++;
+        if (request_id == 0) {
+            request_id = 1;
+        }
     }
 
     return 0;

@@ -12,6 +12,8 @@
 #include <unistd.h>
 #include "common.h"
 
+using namespace std;
+
 struct Resource {
     int id;
     int status;
@@ -22,7 +24,7 @@ int g_msg_queue_id = -1;
 bool g_running = true;
 
 void signal_handler(int signum) {
-    std::cout << "\n[Server] Cleaning up Message Queue...\n";
+    cout << "\n[Server] Cleaning up Message Queue...\n";
     g_running = false;
     if (g_msg_queue_id != -1) {
         msgctl(g_msg_queue_id, IPC_RMID, nullptr);
@@ -32,16 +34,16 @@ void signal_handler(int signum) {
 
 class ReservationServer {
 private:
-    std::map<int, Resource> resources;
-    std::mutex table_mutex;
+    map<int, Resource> resources;
+    mutex table_mutex;
     int msg_queue_id;
     bool enable_sync;
 
     void random_delay() {
-        static thread_local std::mt19937 generator(std::random_device{}());
-        std::uniform_int_distribution<int> distribution(50, 500);
+        static thread_local mt19937 generator(random_device{}());
+        uniform_int_distribution<int> distribution(50, 500);
         int delay_ms = distribution(generator);
-        std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+        this_thread::sleep_for(chrono::milliseconds(delay_ms));
     }
 
     bool handle_reserve(int worker_id, int client_id, int resource_id) {
@@ -50,11 +52,11 @@ private:
 
         if (enable_sync) {
             table_mutex.lock();
-            std::cout << "[Worker-" << worker_id << "] entering critical section\n";
+            cout << "[Worker-" << worker_id << "] entering critical section\n";
         }
 
         bool success = false;
-        std::cout << "[Worker-" << worker_id << "] check Resource " << resource_id 
+        cout << "[Worker-" << worker_id << "] check Resource " << resource_id
                   << ": " << (resource.status == AVAILABLE ? "AVAILABLE" : "RESERVED") << "\n";
 
         if (resource.status == AVAILABLE) {
@@ -62,15 +64,15 @@ private:
             resource.status = RESERVED;
             resource.owner_client_id = client_id;
             success = true;
-            std::cout << "[Worker-" << worker_id << "] Resource " << resource_id 
+            cout << "[Worker-" << worker_id << "] Resource " << resource_id
                       << " reserved by Client-" << client_id << "\n";
         } else {
-            std::cout << "[Worker-" << worker_id << "] Resource " << resource_id 
+            cout << "[Worker-" << worker_id << "] Resource " << resource_id
                       << " already reserved\n";
         }
 
         if (enable_sync) {
-            std::cout << "[Worker-" << worker_id << "] leaving critical section\n";
+            cout << "[Worker-" << worker_id << "] leaving critical section\n";
             table_mutex.unlock();
         }
 
@@ -83,7 +85,7 @@ private:
 
         if (enable_sync) {
             table_mutex.lock();
-            std::cout << "[Worker-" << worker_id << "] entering critical section\n";
+            cout << "[Worker-" << worker_id << "] entering critical section\n";
         }
 
         bool success = false;
@@ -91,15 +93,15 @@ private:
             resource.status = AVAILABLE;
             resource.owner_client_id = -1;
             success = true;
-            std::cout << "[Worker-" << worker_id << "] Resource " << resource_id 
+            cout << "[Worker-" << worker_id << "] Resource " << resource_id
                       << " cancelled by Client-" << client_id << "\n";
         } else {
-            std::cout << "[Worker-" << worker_id << "] Resource " << resource_id 
+            cout << "[Worker-" << worker_id << "] Resource " << resource_id
                       << " cancel failed\n";
         }
 
         if (enable_sync) {
-            std::cout << "[Worker-" << worker_id << "] leaving critical section\n";
+            cout << "[Worker-" << worker_id << "] leaving critical section\n";
             table_mutex.unlock();
         }
 
@@ -130,28 +132,28 @@ public:
 
             switch (msg.command) {
                 case CMD_RESERVE: {
-                    std::cout << "[Worker-" << worker_id << "] received RESERVE " << msg.resource_id 
+                    cout << "[Worker-" << worker_id << "] received RESERVE " << msg.resource_id
                               << " from Client-" << msg.client_id << "\n";
                     bool ok = handle_reserve(worker_id, msg.client_id, msg.resource_id);
                     strcpy(response.payload, ok ? "SUCCESS" : "FAILED");
                     break;
                 }
                 case CMD_CANCEL: {
-                    std::cout << "[Worker-" << worker_id << "] received CANCEL " << msg.resource_id 
+                    cout << "[Worker-" << worker_id << "] received CANCEL " << msg.resource_id
                               << " from Client-" << msg.client_id << "\n";
                     bool ok = handle_cancel(worker_id, msg.client_id, msg.resource_id);
                     strcpy(response.payload, ok ? "SUCCESS" : "FAILED");
                     break;
                 }
                 case CMD_STATUS: {
-                    std::cout << "[Worker-" << worker_id << "] received STATUS " << msg.resource_id 
+                    cout << "[Worker-" << worker_id << "] received STATUS " << msg.resource_id
                               << " from Client-" << msg.client_id << "\n";
                     auto resource = resources.find(msg.resource_id);
                     if (resource != resources.end()) {
                         if (resource->second.status == AVAILABLE) {
                             strcpy(response.payload, "AVAILABLE");
                         } else {
-                            std::string s = "RESERVED by Client-" + std::to_string(resource->second.owner_client_id);
+                            string s = "RESERVED by Client-" + to_string(resource->second.owner_client_id);
                             strcpy(response.payload, s.c_str());
                         }
                     } else {
@@ -160,11 +162,11 @@ public:
                     break;
                 }
                 case CMD_LIST: {
-                    std::cout << "[Worker-" << worker_id << "] received LIST from Client-" << msg.client_id << "\n";
-                    std::string list_str = "";
+                    cout << "[Worker-" << worker_id << "] received LIST from Client-" << msg.client_id << "\n";
+                    string list_str = "";
                     for (const auto& entry : resources) {
                         const Resource& resource = entry.second;
-                        list_str += "[" + std::to_string(resource.id) + ": " +
+                        list_str += "[" + to_string(resource.id) + ": " +
                                     (resource.status == AVAILABLE ? "A" : "R") + "] ";
                     }
                     strncpy(response.payload, list_str.c_str(), sizeof(response.payload) - 1);
@@ -180,12 +182,12 @@ public:
     }
 
     void run(int num_workers) {
-        std::cout << "========================================================\n";
-        std::cout << " Server Started with " << num_workers << " Workers\n";
-        std::cout << " Synchronization Mode: " << (enable_sync ? "ENABLED (Mutex)" : "DISABLED") << "\n";
-        std::cout << "========================================================\n";
+        cout << "========================================================\n";
+        cout << " Server Started with " << num_workers << " Workers\n";
+        cout << " Synchronization Mode: " << (enable_sync ? "ENABLED (Mutex)" : "DISABLED") << "\n";
+        cout << "========================================================\n";
 
-        std::vector<std::thread> workers;
+        vector<thread> workers;
         for (int i = 1; i <= num_workers; ++i) {
             workers.emplace_back(&ReservationServer::worker_loop, this, i);
         }
@@ -200,8 +202,8 @@ int main(int argc, char* argv[]) {
     int num_workers = 3;
     bool enable_sync = false;
 
-    if (argc >= 2) num_workers = std::stoi(argv[1]);
-    if (argc >= 3) enable_sync = (std::stoi(argv[2]) == 1);
+    if (argc >= 2) num_workers = stoi(argv[1]);
+    if (argc >= 3) enable_sync = (stoi(argv[2]) == 1);
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);

@@ -1,4 +1,5 @@
 #include <iostream>
+#include <map>
 #include <vector>
 #include <thread>
 #include <mutex>
@@ -31,7 +32,7 @@ void signal_handler(int signum) {
 
 class ReservationServer {
 private:
-    std::vector<Resource> resources;
+    std::map<int, Resource> resources;
     std::mutex table_mutex;
     int msg_queue_id;
     bool enable_sync;
@@ -45,7 +46,7 @@ private:
 
     bool handle_reserve(int worker_id, int client_id, int resource_id) {
         if (resource_id < 1 || resource_id > NUM_RESOURCES) return false;
-        int idx = resource_id - 1;
+        Resource& resource = resources.at(resource_id);
 
         if (enable_sync) {
             table_mutex.lock();
@@ -54,12 +55,12 @@ private:
 
         bool success = false;
         std::cout << "[Worker-" << worker_id << "] check Resource " << resource_id 
-                  << ": " << (resources[idx].status == AVAILABLE ? "AVAILABLE" : "RESERVED") << "\n";
+                  << ": " << (resource.status == AVAILABLE ? "AVAILABLE" : "RESERVED") << "\n";
 
-        if (resources[idx].status == AVAILABLE) {
+        if (resource.status == AVAILABLE) {
             random_delay();
-            resources[idx].status = RESERVED;
-            resources[idx].owner_client_id = client_id;
+            resource.status = RESERVED;
+            resource.owner_client_id = client_id;
             success = true;
             std::cout << "[Worker-" << worker_id << "] Resource " << resource_id 
                       << " reserved by Client-" << client_id << "\n";
@@ -78,7 +79,7 @@ private:
 
     bool handle_cancel(int worker_id, int client_id, int resource_id) {
         if (resource_id < 1 || resource_id > NUM_RESOURCES) return false;
-        int idx = resource_id - 1;
+        Resource& resource = resources.at(resource_id);
 
         if (enable_sync) {
             table_mutex.lock();
@@ -86,9 +87,9 @@ private:
         }
 
         bool success = false;
-        if (resources[idx].status == RESERVED && resources[idx].owner_client_id == client_id) {
-            resources[idx].status = AVAILABLE;
-            resources[idx].owner_client_id = -1;
+        if (resource.status == RESERVED && resource.owner_client_id == client_id) {
+            resource.status = AVAILABLE;
+            resource.owner_client_id = -1;
             success = true;
             std::cout << "[Worker-" << worker_id << "] Resource " << resource_id 
                       << " cancelled by Client-" << client_id << "\n";
@@ -108,7 +109,7 @@ private:
 public:
     ReservationServer(int qid, bool sync_mode) : msg_queue_id(qid), enable_sync(sync_mode) {
         for (int i = 1; i <= NUM_RESOURCES; ++i) {
-            resources.push_back({i, AVAILABLE, -1});
+            resources.emplace(i, Resource{i, AVAILABLE, -1});
         }
     }
 
@@ -145,12 +146,12 @@ public:
                 case CMD_STATUS: {
                     std::cout << "[Worker-" << worker_id << "] received STATUS " << msg.resource_id 
                               << " from Client-" << msg.client_id << "\n";
-                    int idx = msg.resource_id - 1;
-                    if (idx >= 0 && idx < NUM_RESOURCES) {
-                        if (resources[idx].status == AVAILABLE) {
+                    auto resource = resources.find(msg.resource_id);
+                    if (resource != resources.end()) {
+                        if (resource->second.status == AVAILABLE) {
                             strcpy(response.payload, "AVAILABLE");
                         } else {
-                            std::string s = "RESERVED by Client-" + std::to_string(resources[idx].owner_client_id);
+                            std::string s = "RESERVED by Client-" + std::to_string(resource->second.owner_client_id);
                             strcpy(response.payload, s.c_str());
                         }
                     } else {
@@ -161,9 +162,10 @@ public:
                 case CMD_LIST: {
                     std::cout << "[Worker-" << worker_id << "] received LIST from Client-" << msg.client_id << "\n";
                     std::string list_str = "";
-                    for (const auto& r : resources) {
-                        list_str += "[" + std::to_string(r.id) + ": " + 
-                                    (r.status == AVAILABLE ? "A" : "R") + "] ";
+                    for (const auto& entry : resources) {
+                        const Resource& resource = entry.second;
+                        list_str += "[" + std::to_string(resource.id) + ": " +
+                                    (resource.status == AVAILABLE ? "A" : "R") + "] ";
                     }
                     strncpy(response.payload, list_str.c_str(), sizeof(response.payload) - 1);
                     break;

@@ -5,7 +5,7 @@
 
 #define QUEUE_KEY 0x123456
 #define NUM_RESOURCES 20
-#define SERVER_MSG_TYPE 1
+#define SERVER_MSG_TYPE 1000
 
 enum CommandType {
     CMD_LIST = 1,

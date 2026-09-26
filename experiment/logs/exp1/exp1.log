@@ -1,0 +1,21 @@
+========================================================
+ Server Started with 1 Workers
+ Synchronization Mode: DISABLED
+========================================================
+[Worker-1] received RESERVE 10 from Client-5
+[Worker-1] check Resource 10: AVAILABLE
+[Worker-1] Resource 10 reserved by Client-5
+[Worker-1] received RESERVE 10 from Client-3
+[Worker-1] check Resource 10: RESERVED
+[Worker-1] Resource 10 already reserved
+[Worker-1] received RESERVE 10 from Client-4
+[Worker-1] check Resource 10: RESERVED
+[Worker-1] Resource 10 already reserved
+[Worker-1] received RESERVE 10 from Client-2
+[Worker-1] check Resource 10: RESERVED
+[Worker-1] Resource 10 already reserved
+[Worker-1] received RESERVE 10 from Client-1
+[Worker-1] check Resource 10: RESERVED
+[Worker-1] Resource 10 already reserved
+
+[Server] Cleaning up Message Queue...

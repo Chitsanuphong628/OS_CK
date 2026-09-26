@@ -1,0 +1,31 @@
+========================================================
+ Server Started with 3 Workers
+ Synchronization Mode: ENABLED (Mutex)
+========================================================
+[Worker-1] received RESERVE 10 from Client-1
+[Worker-1] entering critical section
+[Worker-1] check Resource 10: AVAILABLE
+[Worker-2] received RESERVE 10 from Client-2
+[Worker-3] received RESERVE 10 from Client-3
+[Worker-1] Resource 10 reserved by Client-1
+[Worker-1] leaving critical section
+[Worker-2] entering critical section
+[Worker-2] check Resource 10: RESERVED
+[Worker-2] Resource 10 already reserved
+[Worker-2] leaving critical section
+[Worker-3] entering critical section
+[Worker-3] check Resource 10: RESERVED
+[Worker-3] Resource 10 already reserved
+[Worker-3] leaving critical section
+[Worker-1] received RESERVE 10 from Client-5
+[Worker-1] entering critical section
+[Worker-1] check Resource 10: RESERVED
+[Worker-[Worker-3] received RESERVE 110] Resource 10 already reserved
+[Worker-1] leaving critical section
+ from Client-4
+[Worker-3] entering critical section
+[Worker-3] check Resource 10: RESERVED
+[Worker-3] Resource 10 already reserved
+[Worker-3] leaving critical section
+
+[Server] Cleaning up Message Queue...

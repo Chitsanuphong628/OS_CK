@@ -1,4 +1,6 @@
 #include <iostream>
+#include <sstream>
+#include <atomic>
 #include <map>
 #include <vector>
 #include <thread>
@@ -32,6 +34,27 @@ void signal_handler(int signum) {
     exit(0);
 }
 
+// Log helpers: give every line a sequence number and print it as one atomic
+// write so lines from different worker threads never interleave mid-line.
+// Uses its own mutex, separate from table_mutex, so it has no effect on the
+// actual reservation critical section / Lock->Check->Update->Unlock timing.
+mutex log_mutex;
+atomic<long> log_seq{0};
+
+template <typename... Args>
+void log_line(Args&&... args) {
+    ostringstream oss;
+    oss << "[#" << (log_seq.fetch_add(1) + 1) << "] ";
+    (oss << ... << args);
+    lock_guard<mutex> lock(log_mutex);
+    cout << oss.str() << "\n";
+}
+
+template <typename... Args>
+void log_worker(int worker_id, Args&&... args) {
+    log_line("[Worker-", worker_id, "] ", args...);
+}
+
 class ReservationServer {
 private:
     map<int, Resource> resources;
@@ -52,27 +75,25 @@ private:
 
         if (enable_sync) {
             table_mutex.lock();
-            cout << "[Worker-" << worker_id << "] entering critical section\n";
+            log_worker(worker_id, "entering critical section");
         }
 
         bool success = false;
-        cout << "[Worker-" << worker_id << "] check Resource " << resource_id
-                  << ": " << (resource.status == AVAILABLE ? "AVAILABLE" : "RESERVED") << "\n";
+        log_worker(worker_id, "check Resource ", resource_id, ": ",
+                   (resource.status == AVAILABLE ? "AVAILABLE" : "RESERVED"));
 
         if (resource.status == AVAILABLE) {
             random_delay();
             resource.status = RESERVED;
             resource.owner_client_id = client_id;
             success = true;
-            cout << "[Worker-" << worker_id << "] Resource " << resource_id
-                      << " reserved by Client-" << client_id << "\n";
+            log_worker(worker_id, "Resource ", resource_id, " reserved by Client-", client_id);
         } else {
-            cout << "[Worker-" << worker_id << "] Resource " << resource_id
-                      << " already reserved\n";
+            log_worker(worker_id, "Resource ", resource_id, " already reserved");
         }
 
         if (enable_sync) {
-            cout << "[Worker-" << worker_id << "] leaving critical section\n";
+            log_worker(worker_id, "leaving critical section");
             table_mutex.unlock();
         }
 
@@ -85,7 +106,7 @@ private:
 
         if (enable_sync) {
             table_mutex.lock();
-            cout << "[Worker-" << worker_id << "] entering critical section\n";
+            log_worker(worker_id, "entering critical section");
         }
 
         bool success = false;
@@ -93,15 +114,13 @@ private:
             resource.status = AVAILABLE;
             resource.owner_client_id = -1;
             success = true;
-            cout << "[Worker-" << worker_id << "] Resource " << resource_id
-                      << " cancelled by Client-" << client_id << "\n";
+            log_worker(worker_id, "Resource ", resource_id, " cancelled by Client-", client_id);
         } else {
-            cout << "[Worker-" << worker_id << "] Resource " << resource_id
-                      << " cancel failed\n";
+            log_worker(worker_id, "Resource ", resource_id, " cancel failed");
         }
 
         if (enable_sync) {
-            cout << "[Worker-" << worker_id << "] leaving critical section\n";
+            log_worker(worker_id, "leaving critical section");
             table_mutex.unlock();
         }
 
@@ -132,22 +151,22 @@ public:
 
             switch (msg.command) {
                 case CMD_RESERVE: {
-                    cout << "[Worker-" << worker_id << "] received RESERVE " << msg.resource_id
-                              << " from Client-" << msg.client_id << "\n";
+                    log_worker(worker_id, "received RESERVE ", msg.resource_id,
+                               " from Client-", msg.client_id);
                     bool ok = handle_reserve(worker_id, msg.client_id, msg.resource_id);
                     strcpy(response.payload, ok ? "SUCCESS" : "FAILED");
                     break;
                 }
                 case CMD_CANCEL: {
-                    cout << "[Worker-" << worker_id << "] received CANCEL " << msg.resource_id
-                              << " from Client-" << msg.client_id << "\n";
+                    log_worker(worker_id, "received CANCEL ", msg.resource_id,
+                               " from Client-", msg.client_id);
                     bool ok = handle_cancel(worker_id, msg.client_id, msg.resource_id);
                     strcpy(response.payload, ok ? "SUCCESS" : "FAILED");
                     break;
                 }
                 case CMD_STATUS: {
-                    cout << "[Worker-" << worker_id << "] received STATUS " << msg.resource_id
-                              << " from Client-" << msg.client_id << "\n";
+                    log_worker(worker_id, "received STATUS ", msg.resource_id,
+                               " from Client-", msg.client_id);
                     auto resource = resources.find(msg.resource_id);
                     if (resource != resources.end()) {
                         if (resource->second.status == AVAILABLE) {
@@ -162,7 +181,7 @@ public:
                     break;
                 }
                 case CMD_LIST: {
-                    cout << "[Worker-" << worker_id << "] received LIST from Client-" << msg.client_id << "\n";
+                    log_worker(worker_id, "received LIST from Client-", msg.client_id);
                     string list_str = "";
                     for (const auto& entry : resources) {
                         const Resource& resource = entry.second;

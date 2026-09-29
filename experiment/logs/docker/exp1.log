@@ -3,21 +3,21 @@
  Server Started with 1 Workers
  Synchronization Mode: DISABLED
 ========================================================
-[Worker-1] received RESERVE 10 from Client-2
-[Worker-1] check Resource 10: AVAILABLE
-[Worker-1] Resource 10 reserved by Client-2
-[Worker-1] received RESERVE 10 from Client-1
-[Worker-1] check Resource 10: RESERVED
-[Worker-1] Resource 10 already reserved
-[Worker-1] received RESERVE 10 from Client-3
-[Worker-1] check Resource 10: RESERVED
-[Worker-1] Resource 10 already reserved
-[Worker-1] received RESERVE 10 from Client-4
-[Worker-1] check Resource 10: RESERVED
-[Worker-1] Resource 10 already reserved
-[Worker-1] received RESERVE 10 from Client-5
-[Worker-1] check Resource 10: RESERVED
-[Worker-1] Resource 10 already reserved
+[#1] [Worker-1] received RESERVE 10 from Client-2
+[#2] [Worker-1] check Resource 10: AVAILABLE
+[#3] [Worker-1] Resource 10 reserved by Client-2
+[#4] [Worker-1] received RESERVE 10 from Client-1
+[#5] [Worker-1] check Resource 10: RESERVED
+[#6] [Worker-1] Resource 10 already reserved
+[#7] [Worker-1] received RESERVE 10 from Client-5
+[#8] [Worker-1] check Resource 10: RESERVED
+[#9] [Worker-1] Resource 10 already reserved
+[#10] [Worker-1] received RESERVE 10 from Client-4
+[#11] [Worker-1] check Resource 10: RESERVED
+[#12] [Worker-1] Resource 10 already reserved
+[#13] [Worker-1] received RESERVE 10 from Client-3
+[#14] [Worker-1] check Resource 10: RESERVED
+[#15] [Worker-1] Resource 10 already reserved
 
 [Server] Cleaning up Message Queue...
 
@@ -27,3 +27,7 @@ Client-2: SUCCESS
 Client-3: FAILED
 Client-4: FAILED
 Client-5: FAILED
+
+Exactly one SUCCESS as expected: with a single worker every request is
+handled strictly one at a time, so there is no window for a race
+regardless of synchronization mode.

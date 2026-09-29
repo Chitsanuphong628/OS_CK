@@ -1,0 +1,36 @@
+=== DEMO 1 STYLE: 5 clients, 5 different commands, all at once (3 workers, sync ON) ===
+========================================================
+ Server Started with 3 Workers
+ Synchronization Mode: ENABLED (Mutex)
+========================================================
+[#1] [Worker-1] received LIST from Client-1
+[#2] [Worker-2] received RESERVE 5 from Client-2
+[#3] [Worker-2] entering critical section
+[#4] [Worker-2] check Resource 5: AVAILABLE
+[#5] [Worker-3] received RESERVE 8 from Client-4
+[#6] [Worker-1] received STATUS 5 from Client-3
+[#7] [Worker-2] Resource 5 reserved by Client-2
+[#8] [Worker-2] leaving critical section
+[#9] [Worker-3] entering critical section
+[#10] [Worker-3] check Resource 8: AVAILABLE
+[#11] [Worker-2] received CANCEL 8 from Client-5
+[#12] [Worker-3] Resource 8 reserved by Client-4
+[#13] [Worker-3] leaving critical section
+[#14] [Worker-2] entering critical section
+[#15] [Worker-2] Resource 8 cancel failed
+[#16] [Worker-2] leaving critical section
+
+[Server] Cleaning up Message Queue...
+
+=== CLIENT RESULTS ===
+Client-1 (LIST)      -> [1: A] [2: A] ... [20: A]  (snapshot taken before any RESERVE completed)
+Client-2 (RESERVE 5) -> SUCCESS
+Client-3 (STATUS 5)  -> RESERVED by Client-2   (correct: STATUS now also takes table_mutex, so it
+                                                 never reads Resource 5 mid-write)
+Client-4 (RESERVE 8) -> SUCCESS
+Client-5 (CANCEL 8)  -> FAILED                 (correct: Client-5 does not own Resource 8, so the
+                                                 ownership check in handle_cancel rejects it)
+
+Demonstrates Demo 1's requirement (multiple clients sending different
+commands at the same time) with no crash and every result consistent
+with the actual final state of the resource table.

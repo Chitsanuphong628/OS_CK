@@ -3,43 +3,45 @@
  Server Started with 3 Workers
  Synchronization Mode: ENABLED (Mutex)
 ========================================================
-[Worker-2] received RESERVE 10 from Client-3
-[Worker-1] received RESERVE 10 from Client-2
-[Worker-2] entering critical section
-[Worker-2] check Resource 10: AVAILABLE
-[Worker-3] received RESERVE 10 from Client-5
-[Worker-2] Resource 10 reserved by Client-3
-[Worker-2] leaving critical section
-[Worker-1] entering critical section
-[Worker-1] check Resource 10: RESERVED
-[Worker-1] Resource 10 already reserved
-[Worker-1] leaving critical section
-[Worker-2] received RESERVE 10 from Client-4
-[Worker-2] entering critical section
-[Worker-2] check Resource 10: RESERVED
-[Worker-2] Resource 10 already reserved
-[Worker-2] leaving critical section
-[Worker-2] received RESERVE 10 from Client-1
-[Worker-2] entering critical section
-[Worker-2] check Resource 10: RESERVED
-[Worker-2] Resource 10 already reserved
-[Worker-2] leaving critical section
-[Worker-3] entering critical section
-[Worker-3] check Resource 10: RESERVED
-[Worker-3] Resource 10 already reserved
-[Worker-3] leaving critical section
+[#1] [Worker-1] received RESERVE 10 from Client-2
+[#2] [Worker-1] entering critical section
+[#3] [Worker-1] check Resource 10: AVAILABLE
+[#4] [Worker-2] received RESERVE 10 from Client-3
+[#5] [Worker-3] received RESERVE 10 from Client-1
+[#6] [Worker-1] Resource 10 reserved by Client-2
+[#7] [Worker-1] leaving critical section
+[#8] [Worker-2] entering critical section
+[#9] [Worker-2] check Resource 10: RESERVED
+[#10] [Worker-2] Resource 10 already reserved
+[#11] [Worker-2] leaving critical section
+[#12] [Worker-3] entering critical section
+[#13] [Worker-3] check Resource 10: RESERVED
+[#14] [Worker-3] Resource 10 already reserved
+[#15] [Worker-3] leaving critical section
+[#16] [Worker-2] received RESERVE 10 from Client-5
+[#17] [Worker-2] entering critical section
+[#18] [Worker-2] check Resource 10: RESERVED
+[#19] [Worker-2] Resource 10 already reserved
+[#20] [Worker-2] leaving critical section
+[#21] [Worker-1] received RESERVE 10 from Client-4
+[#22] [Worker-1] entering critical section
+[#23] [Worker-1] check Resource 10: RESERVED
+[#24] [Worker-1] Resource 10 already reserved
+[#25] [Worker-1] leaving critical section
 
 [Server] Cleaning up Message Queue...
 
 === CLIENT RESULTS ===
 Client-1: FAILED
-Client-2: FAILED
-Client-3: SUCCESS
+Client-2: SUCCESS
+Client-3: FAILED
 Client-4: FAILED
 Client-5: FAILED
 
-NOTE: the first two log lines interleave ("[Worker-[Worker-2] received...")
-because concurrent cout writes aren't protected by a print-mutex — only
-the resource table access is locked. Cosmetic only; the actual
-entering/leaving critical section sequence and the SUCCESS/FAILED outcome
-are correct: exactly one client (Client-3) succeeded, matching spec.
+Exactly one SUCCESS, same random delay as Exp2. The "entering/leaving
+critical section" pairs show Worker-2 and Worker-3 both received their
+requests early (#4, #5) but could not enter the critical section until
+Worker-1 finished and unlocked (#7) — the mutex serializes the
+check-then-write sequence, so every worker that arrives after the first
+one always sees the up-to-date RESERVED state instead of a stale
+AVAILABLE one. This is the fix for the race condition shown in exp2.log.

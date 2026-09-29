@@ -167,6 +167,7 @@ public:
                 case CMD_STATUS: {
                     log_worker(worker_id, "received STATUS ", msg.resource_id,
                                " from Client-", msg.client_id);
+                    lock_guard<mutex> lock(table_mutex);
                     auto resource = resources.find(msg.resource_id);
                     if (resource != resources.end()) {
                         if (resource->second.status == AVAILABLE) {
@@ -182,6 +183,7 @@ public:
                 }
                 case CMD_LIST: {
                     log_worker(worker_id, "received LIST from Client-", msg.client_id);
+                    lock_guard<mutex> lock(table_mutex);
                     string list_str = "";
                     for (const auto& entry : resources) {
                         const Resource& resource = entry.second;
@@ -226,6 +228,16 @@ int main(int argc, char* argv[]) {
 
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
+
+    // If a previous run crashed or was killed without reaching
+    // signal_handler(), the queue survives in the OS with stale messages
+    // in it and msgget(..., IPC_CREAT) below would just reuse it. Remove
+    // any leftover queue first so every start begins from a clean state.
+    int existing_queue_id = msgget(QUEUE_KEY, 0666);
+    if (existing_queue_id != -1) {
+        cout << "[Server] Found a leftover message queue from a previous run, removing it...\n";
+        msgctl(existing_queue_id, IPC_RMID, nullptr);
+    }
 
     g_msg_queue_id = msgget(QUEUE_KEY, IPC_CREAT | 0666);
     if (g_msg_queue_id == -1) {

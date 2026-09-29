@@ -206,3 +206,34 @@ Every log line is tagged with a `[#N]` sequence number (a global atomic counter,
 
 - `STATUS`/`LIST` always take `table_mutex` regardless of the `sync` flag (independent of the experiment toggle) — reads should never race a write, and since none of the 3 required experiments send `STATUS`/`LIST` concurrently with `RESERVE`, this doesn't affect any experiment's result.
 - The server checks for and removes a leftover message queue on every startup (see §5) so a prior crash can never leave stale messages for the next run to accidentally consume.
+
+---
+
+## 9. Scalability / timing (not required by the spec — extra depth for the report's limitations section)
+
+Full log: `experiment/logs/docker/scalability.log`. Measured with `date +%s%N` around a batch of concurrent clients inside the Docker image, `sync=ON` throughout.
+
+**Does adding workers speed up RESERVE?** 20 clients each reserving a distinct seat, worker count varied:
+
+| Workers | Clients | Elapsed |
+|---|---|---|
+| 1 | 20 | 5817 ms |
+| 3 | 20 | 6398 ms |
+| 10 | 20 | 6180 ms |
+
+Barely any difference. `table_mutex` is one global lock over the whole seat table, and `random_delay()` (50–500ms) runs *inside* that lock in `handle_reserve()` — every successful reservation, regardless of which seat, must wait for the current lock-holder's full delay. With 20 reservations averaging ~275ms each, total time is bounded below by ~5.5s no matter how many worker threads exist, because they all queue on the same mutex. Worker count only helps once there's something to actually run in parallel — inside `handle_reserve` there isn't.
+
+**Does client load affect read-only STATUS throughput?** Workers fixed at 3, client count varied, each sending one `STATUS`:
+
+| Clients | Elapsed |
+|---|---|
+| 5 | 5 ms |
+| 20 | 10 ms |
+| 50 | 20 ms |
+| 200 | 57 ms |
+
+Scales close to linearly, no breakdown observed up to 200 concurrent clients — `STATUS`'s critical section is a map lookup with no delay, so the lock is held for microseconds rather than hundreds of milliseconds.
+
+**Take-away:** this system's throughput ceiling comes from the single global mutex + the delay held inside it while reserving, not from worker count or message-queue capacity (kernel default queue size is 16 KB, comfortably more than what these tests generated). A per-resource lock instead of one table-wide lock would let reservations on different seats run fully in parallel — a reasonable future improvement, and a reasonable trade-off to have skipped for a 20-seat/5-client assignment.
+
+*Methodology note: each "client" is a full OS process spawned via `docker exec`; at much higher counts the process-spawn overhead itself would start to dominate the measurement, so treat these as illustrative of the server's actual bottleneck, not as a rigorous load-testing tool's output.*

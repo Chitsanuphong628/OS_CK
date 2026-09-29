@@ -1,0 +1,61 @@
+=== SCALABILITY / TIMING TEST (not a spec requirement — extra depth for report §12) ===
+Measured with `date +%s%N` around a batch of concurrent clients, run inside the
+css223-reservation Docker image. All runs: sync=ON (mutex enabled).
+
+--- Test 1: does adding workers help RESERVE throughput? ---
+20 clients, each RESERVE a distinct resource (1-20), workers varied:
+
+  workers=1   clients=20  elapsed=5817ms
+  workers=3   clients=20  elapsed=6398ms
+  workers=10  clients=20  elapsed=6180ms
+
+FINDING: worker count barely matters (~6s regardless of 1, 3, or 10 workers).
+Cause: `table_mutex` is ONE global lock covering the entire resource map, and
+`random_delay()` (50-500ms) runs INSIDE that lock in handle_reserve(). Every
+RESERVE — even on a completely different resource_id — must wait for the
+current lock holder's full delay to finish. With 20 successful reservations
+each holding the lock for ~50-500ms (avg ~275ms), total time is bounded below
+by roughly 20 x 275ms =~ 5.5s no matter how many worker threads exist, because
+they all queue up on the same mutex. More workers only helps once something
+is actually parallel; here nothing is, once you're inside handle_reserve.
+
+--- Test 2: does client load affect STATUS (read-only) throughput? ---
+workers fixed at 3, client count varied, each client sends one STATUS:
+
+  clients=5    elapsed=5ms
+  clients=20   elapsed=10ms
+  clients=50   elapsed=20ms
+  clients=200  elapsed=57ms
+
+FINDING: scales roughly linearly and stays fast even at 200 concurrent clients
+— no cliff/breakdown observed in this range. Cause: STATUS's critical section
+is just a map lookup (no random_delay), so table_mutex is held for
+microseconds, not hundreds of milliseconds — contention is real but brief.
+
+--- Kernel-level ceiling (context, not hit in testing) ---
+`ipcs -l` on this image: default max queue size = 16384 bytes. Each message is
+~524 bytes, so roughly ~31 unconsumed messages can sit in the queue before a
+client's msgsnd (no IPC_NOWAIT) blocks waiting for a worker to drain it. Not
+observed as a bottleneck up to 200 concurrent STATUS clients — workers drained
+the queue faster than it filled, since each STATUS is serviced in
+microseconds.
+
+--- Honest methodology caveats ---
+- Each "client" here is a full process spawned via Bash inside `docker exec`;
+  at very high counts (thousands), process-spawn overhead itself would start
+  to dominate the measured time, not the server's own performance. These
+  numbers describe server behavior in the tested range (up to 200 clients),
+  not a rigorous load-testing tool's output.
+- No genuine breakdown/crash point was found within this range — the numbers
+  above describe the server's behavior, not its failure mode.
+
+--- Take-away for the report (§12 — limitations / future improvements) ---
+The bottleneck this system will hit first under load is NOT worker count, and
+not message-queue capacity — it is the fact that ALL resources share a single
+global mutex, and the deliberately-added experiment delay is held inside it.
+A future improvement: one mutex per resource (or a fixed-size array of
+mutexes) instead of one for the whole table, so reservations on different
+seats can proceed fully in parallel. This system currently trades reservation
+throughput for the simplicity of a single lock, which is a reasonable choice
+for a 20-seat/5-client class assignment but would not scale to a
+larger/production system.

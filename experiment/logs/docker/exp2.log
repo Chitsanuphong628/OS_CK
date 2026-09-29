@@ -1,0 +1,36 @@
+=== SERVER LOG (Exp2: 3 workers, sync OFF) ===
+========================================================
+ Server Started with 3 Workers
+ Synchronization Mode: DISABLED
+========================================================
+[Worker-1] received RESERVE 10 from Client-2
+[Worker-1] check Resource 10: AVAILABLE
+[Worker-2] received RESERVE 10 from Client-1
+[Worker-2] check Resource 10: AVAILABLE
+[Worker-3] received RESERVE 10 from Client-4
+[Worker-3] check Resource 10: AVAILABLE
+[Worker-2] Resource 10 reserved by Client-1
+[Worker-2] received RESERVE 10 from Client-3
+[Worker-2] check Resource 10: RESERVED
+[Worker-2] Resource 10 already reserved
+[Worker-2] received RESERVE 10 from Client-5
+[Worker-2] check Resource 10: RESERVED
+[Worker-2] Resource 10 already reserved
+[Worker-1] Resource 10 reserved by Client-2
+[Worker-3] Resource 10 reserved by Client-4
+
+[Server] Cleaning up Message Queue...
+
+=== CLIENT RESULTS ===
+Client-1: SUCCESS
+Client-2: SUCCESS
+Client-3: FAILED
+Client-4: SUCCESS
+Client-5: FAILED
+
+NOTE: 3 workers all read Resource 10 as AVAILABLE before any of them wrote
+back (see the three consecutive "check Resource 10: AVAILABLE" lines from
+Worker-1/2/3 before any "reserved by" line appears). Result: Client-1,
+Client-2 and Client-4 all received SUCCESS for the same resource, even
+though only one reservation should ever succeed. This is the race
+condition the assignment requires demonstrating.
